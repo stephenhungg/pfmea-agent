@@ -1,0 +1,89 @@
+{
+  "severity": {
+    "5": {
+      "product_performance": "Total loss of all functions - primary and secondary or failure to meet Regulatory requirements.",
+      "manufacturing_process": "Process line shutdown or 100% of the production output to be scrapped."
+    },
+    "4": {
+      "product_performance": "Loss or degradation of primary functions or failure to meet product specification.",
+      "manufacturing_process": "Scrap >30% of the production output."
+    },
+    "3": {
+      "product_performance": "Loss or degradation of secondary functions or reduced reliability but remains within specification.",
+      "manufacturing_process": "Scrap >10% of production output or yield impact which may require rework."
+    },
+    "2": {
+      "product_performance": "Minor cosmetic or usability impact but remains within specification.",
+      "manufacturing_process": "Scrap <10% of production output or process downtime or yield impact which may require rework. Likely to affect subsequent assembly processes."
+    },
+    "1": {
+      "product_performance": "Failure will have no impact to product performance.",
+      "manufacturing_process": "Low likelihood to affect subsequent assembly processes."
+    }
+  },
+  "occurrence": {
+    "5": {
+      "qualitative": "Very high: Failures are certain to occur.",
+      "occurrences_over_time": "1",
+      "event_percentages": "≥5%",
+      "probability": "≥10E-4"
+    },
+    "4": {
+      "qualitative": "High: Process step known to have frequent failures.",
+      "occurrences_over_time": "0.1 to <1",
+      "event_percentages": "≥1% to <5%",
+      "probability": "<10E-4 to 10E-5"
+    },
+    "3": {
+      "qualitative": "Moderate: Failures occasionally occur or have occurred on similar product.",
+      "occurrences_over_time": "0.01 to <0.1",
+      "event_percentages": "≥0.1% to <1%",
+      "probability": "<10E-5 to 10E-6"
+    },
+    "2": {
+      "qualitative": "Low: Failures are unlikely.",
+      "occurrences_over_time": "0.001 to <0.01",
+      "event_percentages": "≥0.01% to <0.1%",
+      "probability": "<10E-6 to 10E-7"
+    },
+    "1": {
+      "qualitative": "Remote/rare: failures are extremely rare or may never occur.",
+      "occurrences_over_time": "< 0.001",
+      "event_percentages": "<0.01%",
+      "probability": "<10E-7"
+    }
+  },
+  "detection": {
+    "5": {
+      "qualitative_1": "None to very low (0% failure mode detection in manufacturing)",
+      "semi_quantitative": "<30%",
+      "qualitative_3": "Very high likelihood that the defect will not be detected in time to prevent the failure effect. Defect could be latent or might not appear until after implant. Defect is not verified or is not verifiable (special process)."
+    },
+    "4": {
+      "qualitative_1": "Poor (25% failure mode detection in manufacturing)",
+      "semi_quantitative": ">30%",
+      "qualitative_3": "High likelihood that the defect will not be detected in the process."
+    },
+    "3": {
+      "qualitative_1": "Moderate (50% failure mode detection in manufacturing)",
+      "semi_quantitative": ">60%",
+      "qualitative_3": "Defect may not be detected in the process."
+    },
+    "2": {
+      "qualitative_1": "Good (75% failure mode detection in manufacturing)",
+      "semi_quantitative": ">90%",
+      "qualitative_3": "Defect will most likely be detected in the process. The defect is 100% tested using visual criteria."
+    },
+    "1": {
+      "qualitative_1": "Immediately apparent (100% failure mode detection in manufacturing)",
+      "semi_quantitative": ">99%",
+      "qualitative_3": "Defect is obvious and will be detected in the process. The defect has 100% testing and is performed using non-visual criteria."
+    }
+  }
+}
+
+
+
+
+
+
