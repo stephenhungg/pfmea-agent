@@ -37,12 +37,16 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
     manager = get_manager()
     
     async def send_progress(message: dict):
-        """Send progress update via WebSocket."""
-        await manager.send_message(analysis_id, {
-            "type": "progress",
-            "analysis_id": analysis_id,
-            **message
-        })
+        """Send progress update via WebSocket with error handling."""
+        try:
+            await manager.send_message(analysis_id, {
+                "type": "progress",
+                "analysis_id": analysis_id,
+                **message
+            })
+        except Exception as ws_error:
+            # Log WebSocket errors but don't fail the entire analysis
+            logger.warning(f"WebSocket send failed for analysis {analysis_id}: {ws_error}")
     
     try:
         # Get analysis
@@ -118,9 +122,9 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
         # Process operations sequentially to prevent Ollama timeouts
         # Ollama queues requests and processes them sequentially, so parallel operations cause timeouts
         semaphore = asyncio.Semaphore(1)  # Process 1 operation at a time
-        
-        async def process_operation(idx: int, operation: Dict[str, Any]):
-            """Process a single operation with semaphore for concurrency control."""
+
+        async def process_operation(idx: int, operation: Dict[str, Any], max_retries: int = 2):
+            """Process a single operation with semaphore for concurrency control and retry logic."""
             async with semaphore:
                 logger.info(f"Processing operation {idx + 1}/{total_operations}")
                 await send_progress({
@@ -131,29 +135,52 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
                     "total_operations": total_operations,
                     "operation_name": operation.get("operation", "Unknown")
                 })
-                
-                try:
-                    logger.info(f"Starting agentic pipeline for operation {idx + 1}")
-                    results = await pipeline.analyze_step(operation, context, send_progress)
-                    logger.info(f"Pipeline completed for operation {idx + 1}: {len(results)} failure modes found")
-                    
-                    await send_progress({
-                        "step": "operation",
-                        "status": "completed",
-                        "message": f"Operation {idx + 1} completed: {len(results)} failure mode(s) identified",
-                        "operation_number": idx + 1,
-                        "failure_modes_found": len(results)
-                    })
-                    return results
-                except Exception as e:
-                    logger.error(f"Error processing operation {idx + 1}: {e}")
-                    await send_progress({
-                        "step": "operation",
-                        "status": "error",
-                        "message": f"Error processing operation {idx + 1}: {str(e)}",
-                        "operation_number": idx + 1
-                    })
-                    return []
+
+                last_error = None
+                for attempt in range(max_retries + 1):
+                    try:
+                        if attempt > 0:
+                            logger.info(f"Retrying operation {idx + 1} (attempt {attempt + 1}/{max_retries + 1})")
+                            await send_progress({
+                                "step": "operation",
+                                "status": "retry",
+                                "message": f"Retrying operation {idx + 1} (attempt {attempt + 1}/{max_retries + 1})",
+                                "operation_number": idx + 1,
+                                "attempt": attempt + 1
+                            })
+
+                        logger.info(f"Starting agentic pipeline for operation {idx + 1}")
+                        results = await pipeline.analyze_step(operation, context, send_progress)
+                        logger.info(f"Pipeline completed for operation {idx + 1}: {len(results)} failure modes found")
+
+                        await send_progress({
+                            "step": "operation",
+                            "status": "completed",
+                            "message": f"Operation {idx + 1} completed: {len(results)} failure mode(s) identified",
+                            "operation_number": idx + 1,
+                            "failure_modes_found": len(results),
+                            "attempts": attempt + 1
+                        })
+                        return results
+                    except Exception as e:
+                        last_error = e
+                        logger.error(f"Error processing operation {idx + 1} (attempt {attempt + 1}): {e}")
+                        if attempt < max_retries:
+                            # Wait before retrying (exponential backoff)
+                            wait_time = 2 ** attempt
+                            logger.info(f"Waiting {wait_time}s before retry...")
+                            await asyncio.sleep(wait_time)
+                        else:
+                            # Final attempt failed
+                            logger.error(f"Operation {idx + 1} failed after {max_retries + 1} attempts")
+                            await send_progress({
+                                "step": "operation",
+                                "status": "error",
+                                "message": f"Operation {idx + 1} failed after {max_retries + 1} attempts: {str(last_error)}",
+                                "operation_number": idx + 1,
+                                "attempts": max_retries + 1
+                            })
+                            return []
         
         # Process all operations concurrently
         all_results = []
@@ -193,16 +220,14 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
         import traceback
         error_trace = traceback.format_exc()
         logger.error(error_trace)
-        
-        try:
-            await send_progress({
-                "step": "error",
-                "status": "failed",
-                "message": f"Analysis failed: {str(e)}",
-                "error": str(e)
-            })
-        except:
-            pass
+
+        # Always try to send error notification, even if WebSocket is down
+        await send_progress({
+            "step": "error",
+            "status": "failed",
+            "message": f"Analysis failed: {str(e)}",
+            "error": str(e)
+        })
         
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
         if analysis:

@@ -8,13 +8,16 @@ from app.models.database import Base
 class Analysis(Base):
     """Model for storing PDF analysis sessions."""
     __tablename__ = "analyses"
-    
+    __table_args__ = (
+        {'sqlite_autoincrement': True}
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)  # When analysis finished
-    status = Column(String, default="pending")  # pending, processing, completed, failed
+    status = Column(String, default="pending", index=True)  # pending, processing, completed, failed - indexed for filtering
     error_message = Column(Text, nullable=True)
     
     # Relationships
@@ -27,9 +30,12 @@ class Analysis(Base):
 class PFMEAResult(Base):
     """Model for storing individual PFMEA analysis results."""
     __tablename__ = "pfmea_results"
-    
+    __table_args__ = (
+        {'sqlite_autoincrement': True}
+    )
+
     id = Column(Integer, primary_key=True, index=True)
-    analysis_id = Column(Integer, ForeignKey("analyses.id"), nullable=False)
+    analysis_id = Column(Integer, ForeignKey("analyses.id"), nullable=False, index=True)
     
     # Process information
     process = Column(String, nullable=False)
@@ -44,12 +50,10 @@ class PFMEAResult(Base):
     severity_justification = Column(Text, nullable=True)
     occurrence = Column(Integer, nullable=False)  # 1-5
     occurrence_justification = Column(Text, nullable=True)
-    detection = Column(Integer, nullable=True)  # Deprecated: No longer used (kept for backward compatibility)
-    detection_justification = Column(Text, nullable=True)  # Deprecated: No longer used
     
     # Calculated fields
-    rpn = Column(Integer, nullable=False)
-    risk_level = Column(String, nullable=False)  # low, medium, high
+    rpn = Column(Integer, nullable=False, index=True)  # Indexed for sorting/filtering by risk score
+    risk_level = Column(String, nullable=False, index=True)  # Indexed for filtering by risk level
     action_required = Column(String, nullable=False)  # yes, no, maybe
     
     # Additional information

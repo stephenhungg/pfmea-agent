@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, Loader2, AlertCircle, RefreshCw, CheckCircle, XCircle, Table, Activity, Cpu, Clock, Zap, Shield, Target, TrendingUp, Database, Radio, AlertTriangle, Layers, GitBranch } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, AlertCircle, RefreshCw, CheckCircle, XCircle, Table, Activity, Cpu, Clock, Zap, Shield, Target, TrendingUp, Database, Radio, AlertTriangle, Layers, GitBranch, Sparkles, List } from 'lucide-react'
 import PfmeaTable from '../components/PfmeaTable'
 import RiskVisualization from '../components/RiskVisualization'
 import { getAnalysis, getAnalysisStatus, exportResults, AnalysisWithResults, PFMEAResult } from '../services/api'
 import { useWebSocket, WebSocketMessage } from '../hooks/useWebSocket'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 
 interface PipelineStage {
   name: string
@@ -12,7 +13,13 @@ interface PipelineStage {
   active: boolean
 }
 
-export default function Analysis() {
+// Configuration constants
+const MAX_WS_LOGS = 100  // Reduced from 200 to prevent memory issues
+const MAX_PROGRESS_LOGS = 50  // Limit progress log entries
+const MAX_ERROR_LOGS = 25  // Limit error log entries
+const MAX_RESULT_TIMES = 20  // Keep last 20 result timing measurements
+
+function AnalysisContent() {
   const { analysisId } = useParams<{ analysisId: string }>()
   const navigate = useNavigate()
   const [analysis, setAnalysis] = useState<AnalysisWithResults | null>(null)
@@ -28,6 +35,7 @@ export default function Analysis() {
   const [elapsedTime, setElapsedTime] = useState(0)
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const [currentOperation, setCurrentOperation] = useState<{process?: string, subprocess?: string, operationId?: number} | null>(null)
+  const [simpleMode, setSimpleMode] = useState(false)
   
   // Enhanced tracking state
   const [operationStats, setOperationStats] = useState({ total: 0, completed: 0, failed: 0, processing: 0 })
@@ -65,22 +73,34 @@ export default function Analysis() {
     }
   }, [analysisId])
 
-  // Auto-scroll logs
+  // Auto-scroll logs - optimized with requestAnimationFrame
   useEffect(() => {
-    if (wsLogsRef.current) wsLogsRef.current.scrollTop = wsLogsRef.current.scrollHeight
-  }, [wsLogs])
-  
+    if (analysis?.status === 'processing') {
+      requestAnimationFrame(() => {
+        if (wsLogsRef.current) wsLogsRef.current.scrollTop = wsLogsRef.current.scrollHeight
+      })
+    }
+  }, [wsLogs.length, analysis?.status])
+
   useEffect(() => {
-    if (progressLogsRef.current) progressLogsRef.current.scrollTop = progressLogsRef.current.scrollHeight
-  }, [progressLog])
-  
+    if (analysis?.status === 'processing') {
+      requestAnimationFrame(() => {
+        if (progressLogsRef.current) progressLogsRef.current.scrollTop = progressLogsRef.current.scrollHeight
+      })
+    }
+  }, [progressLog.length, analysis?.status])
+
   useEffect(() => {
-    if (streamingTableRef.current) streamingTableRef.current.scrollTop = streamingTableRef.current.scrollHeight
+    if (streamingResults.length > 0) {
+      requestAnimationFrame(() => {
+        if (streamingTableRef.current) streamingTableRef.current.scrollTop = streamingTableRef.current.scrollHeight
+      })
+    }
     if (newResultId !== null) {
       const timer = setTimeout(() => setNewResultId(null), 1500)
       return () => clearTimeout(timer)
     }
-  }, [streamingResults, newResultId])
+  }, [streamingResults.length, newResultId])
 
   // WebSocket connection
   const { isConnected } = useWebSocket(
@@ -88,14 +108,14 @@ export default function Analysis() {
     (message: WebSocketMessage) => {
       const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
       
-      setWsLogs((prev) => [...prev.slice(-200), {
+      setWsLogs((prev) => [...prev.slice(-MAX_WS_LOGS), {
         time: timestamp,
         type: message.status || 'info',
         message: message.message || `${message.step || 'SYSTEM'}`,
         data: message
       }])
       
-      setProgressLog((prev) => [...prev, message])
+      setProgressLog((prev) => [...prev.slice(-MAX_PROGRESS_LOGS), message])
       
       if (message.step) setCurrentStep(message.step)
       
@@ -118,7 +138,7 @@ export default function Analysis() {
             failed: prev.failed + 1,
             processing: Math.max(0, prev.processing - 1)
           }))
-          setErrorLog(prev => [...prev.slice(-50), {
+          setErrorLog(prev => [...prev.slice(-MAX_ERROR_LOGS), {
             time: timestamp,
             message: message.message || 'Operation failed',
             operation: message.operation_name
@@ -139,7 +159,7 @@ export default function Analysis() {
       
       // Track errors
       if (message.status === 'error' || message.status === 'failed') {
-        setErrorLog(prev => [...prev.slice(-50), {
+        setErrorLog(prev => [...prev.slice(-MAX_ERROR_LOGS), {
           time: timestamp,
           message: message.message || 'Unknown error',
           operation: message.operation_name || currentOperation?.process
@@ -174,7 +194,7 @@ export default function Analysis() {
         const now = new Date()
         if (lastResultTime) {
           const timeDiff = (now.getTime() - lastResultTime.getTime()) / 1000
-          setResultTimes(prev => [...prev.slice(-20), timeDiff])
+          setResultTimes(prev => [...prev.slice(-MAX_RESULT_TIMES), timeDiff])
         }
         setLastResultTime(now)
         
@@ -196,7 +216,7 @@ export default function Analysis() {
         setError(message.message || 'Analysis failed')
       }
     },
-    (logEntry) => setWsLogs((prev) => [...prev.slice(-200), logEntry])
+    (logEntry) => setWsLogs((prev) => [...prev.slice(-MAX_WS_LOGS), logEntry])
   )
 
   useEffect(() => {
@@ -319,6 +339,107 @@ export default function Analysis() {
   const isCompleted = analysis.status === 'completed'
   const results = isCompleted ? analysis.pfmea_results : streamingResults
 
+  // Simple mode view - just show essentials
+  if (simpleMode) {
+    return (
+      <div className="min-h-screen bg-black text-white p-4">
+        {/* Simple Top Bar */}
+        <div className="border border-white/10 bg-white/[0.02] mb-4 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white flex items-center gap-2 text-sm">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="text-sm text-gray-400">{analysis.filename}</div>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Simple/Advanced Toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <span className="text-xs text-gray-500">Simple</span>
+              <div className="relative">
+                <input type="checkbox" checked={!simpleMode} onChange={(e) => setSimpleMode(!e.target.checked)} className="sr-only" />
+                <div className="w-11 h-6 bg-gray-700 border border-gray-600 rounded-full"></div>
+                <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-gray-400 rounded-full transition-transform flex items-center justify-center">
+                  <List className="w-3 h-3 text-black" />
+                </div>
+              </div>
+            </label>
+            <div className={`px-3 py-1.5 rounded text-sm ${
+              isCompleted ? 'bg-emerald-500/20 text-emerald-300' :
+              isProcessing ? 'bg-blue-500/20 text-blue-300' :
+              'bg-red-500/20 text-red-300'
+            }`}>
+              {isProcessing ? 'Processing...' : isCompleted ? 'Complete' : 'Failed'}
+            </div>
+          </div>
+        </div>
+
+        {/* Simple Content */}
+        <div className="max-w-5xl mx-auto space-y-6">
+          {isProcessing && (
+            <div className="border border-blue-500/30 bg-blue-500/5 p-6 text-center">
+              <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
+              <p className="text-white mb-1">Analysis in progress...</p>
+              <p className="text-sm text-gray-400">Found {streamingResults.length} potential failure modes so far</p>
+            </div>
+          )}
+
+          {isCompleted && (
+            <>
+              {/* Simple Summary */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="border border-white/10 bg-white/[0.02] p-4 text-center">
+                  <div className="text-2xl text-white mb-1">{metrics.total}</div>
+                  <div className="text-xs text-gray-500">Total Risks</div>
+                </div>
+                <div className="border border-red-500/30 bg-red-500/10 p-4 text-center">
+                  <div className="text-2xl text-red-300 mb-1">{metrics.high}</div>
+                  <div className="text-xs text-red-400">High Risk</div>
+                </div>
+                <div className="border border-orange-500/30 bg-orange-500/10 p-4 text-center">
+                  <div className="text-2xl text-orange-300 mb-1">{metrics.avgRpn}</div>
+                  <div className="text-xs text-orange-400">Avg Risk Score</div>
+                </div>
+              </div>
+
+              {/* Export Buttons */}
+              <div className="border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-sm text-gray-400 mb-3">Download Results:</div>
+                <div className="flex gap-3">
+                  <button onClick={() => handleExport('csv')} className="flex-1 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded transition-colors flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                  <button onClick={() => handleExport('excel')} className="flex-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 px-4 py-3 rounded transition-colors flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Download Excel
+                  </button>
+                </div>
+              </div>
+
+              {/* Simple Results Table */}
+              <div className="border border-white/10 bg-white/[0.02]">
+                <div className="px-4 py-3 border-b border-white/10">
+                  <h3 className="text-sm text-white">All Failure Modes ({results.length})</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <PfmeaTable results={analysis.pfmea_results} analysisId={parseInt(analysisId || '0')} filename={analysis.filename} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {error && !analysis && (
+            <div className="border border-red-500/30 bg-red-500/5 p-6 text-center">
+              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+              <p className="text-red-200">{error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Advanced mode view - full monitoring dashboard
   return (
     <div className="min-h-screen bg-black text-white p-2">
       {/* Top Status Bar */}
@@ -332,6 +453,19 @@ export default function Analysis() {
           <span className="text-gray-500">FILE:<span className="text-gray-300 ml-1">{analysis.filename}</span></span>
         </div>
         <div className="flex items-center gap-4">
+          {/* Simple/Advanced Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div className="relative">
+              <input type="checkbox" checked={simpleMode} onChange={(e) => setSimpleMode(e.target.checked)} className="sr-only" />
+              <div className={`w-11 h-6 rounded-full transition-colors ${simpleMode ? 'bg-gray-700 border-gray-600' : 'bg-purple-500/30 border-purple-500/50'} border`}></div>
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-all flex items-center justify-center ${simpleMode ? 'translate-x-5 bg-gray-400' : 'translate-x-0 bg-purple-400'}`}>
+                {simpleMode ? <List className="w-3 h-3 text-black" /> : <Sparkles className="w-3 h-3 text-black" />}
+              </div>
+            </div>
+            <span className={`text-[10px] uppercase tracking-wider ${simpleMode ? 'text-gray-400' : 'text-purple-400'}`}>
+              {simpleMode ? 'Simple' : 'Advanced'}
+            </span>
+          </label>
           <div className="flex items-center gap-1.5">
             <Radio className={`w-4 h-4 ${isConnected ? 'text-emerald-400' : 'text-red-400'}`} />
             <span className={isConnected ? 'text-emerald-400' : 'text-red-400'}>{isConnected ? 'LINK' : 'NOLINK'}</span>
@@ -702,8 +836,16 @@ export default function Analysis() {
       {analysis.error_message && (
         <div className="mt-2 border border-red-500/30 bg-red-500/5 p-3 text-xs font-mono text-red-300">
           <strong>ERROR:</strong> {analysis.error_message}
-          </div>
-        )}
+        </div>
+      )}
     </div>
+  )
+}
+
+export default function Analysis() {
+  return (
+    <ErrorBoundary>
+      <AnalysisContent />
+    </ErrorBoundary>
   )
 }
