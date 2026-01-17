@@ -72,11 +72,36 @@ class PDFParser:
             logger.info("Parsing operations from text content (primary method)")
             operations = self._parse_work_instructions_from_text(self.text_content)
             logger.info(f"Text parsing found {len(operations)} operations")
-        
+
         # If text parsing found fewer operations than table parsing, use table results
         if len(table_operations) > len(operations):
             logger.info(f"Table parsing found more operations ({len(table_operations)} vs {len(operations)}), using table results")
             operations = table_operations
+
+        # If we have both, try to merge process headers from table operations into text operations
+        elif len(table_operations) > 0 and len(operations) > 0:
+            logger.info("Attempting to merge process headers from table operations")
+            # Build a map of process numbers to names from table operations
+            process_map = {}
+            for table_op in table_operations:
+                if table_op.get("operation") and not table_op.get("operation").startswith("PROCESS "):
+                    # Extract process number from subprocess if available
+                    subprocess = table_op.get("subprocess", "")
+                    match = re.match(r'^(\d+)\.', subprocess)
+                    if match:
+                        process_num = match.group(1)
+                        process_map[process_num] = table_op["operation"]
+
+            # Update generic process names in operations
+            for op in operations:
+                if op.get("operation", "").startswith("PROCESS "):
+                    # Extract the process number
+                    match = re.match(r'PROCESS (\d+)', op["operation"])
+                    if match:
+                        process_num = match.group(1)
+                        if process_num in process_map:
+                            logger.info(f"Replacing '{op['operation']}' with '{process_map[process_num]}'")
+                            op["operation"] = process_map[process_num]
         
         # Extract equipment and control points from text as fallback
         if not equipment and self.text_content:
@@ -252,9 +277,14 @@ class PDFParser:
             # Pattern: number.number followed by period/space, then description
             subprocess_match = re.match(r'^(\d+)\.(\d+)[\.\)]\s*(.+)$', line)
             if subprocess_match:
+                process_num = subprocess_match.group(1)
                 subprocess_text = subprocess_match.group(3).strip()
+
+                # If no current_process, use generic process name based on number
+                process_name = current_process if current_process else f"PROCESS {process_num}"
+
                 operations.append({
-                    "operation": current_process,
+                    "operation": process_name,
                     "subprocess": subprocess_text,
                     "details": subprocess_text,
                     "steps": [subprocess_text],
@@ -307,15 +337,30 @@ class PDFParser:
             
             # Subprocess pattern: "1.1. Description text..."
             sub_match = re.match(r'^(\d+)\.(\d+)[\.\)]\s*(.+)$', line_stripped)
-            if sub_match and current_process:
+            if sub_match:
+                process_num = sub_match.group(1)
                 subprocess_text = sub_match.group(3).strip()
+
+                # If no current_process, try to infer from the process number
+                process_name = current_process
+                if not process_name:
+                    # Try to find the main process by looking back through operations
+                    for op in reversed(operations):
+                        if op.get("is_main_process") and op.get("operation"):
+                            process_name = op["operation"]
+                            break
+                    # If still not found, use a generic process name based on the number
+                    if not process_name:
+                        process_name = f"PROCESS {process_num}"
+                        logger.warning(f"Main process header not found for subprocess {line_stripped}, using generic name: {process_name}")
+
                 operations.append({
-                    "operation": current_process,
+                    "operation": process_name,
                     "subprocess": subprocess_text,
                     "details": subprocess_text,
                     "steps": [subprocess_text]
                 })
-                logger.info(f"Found subprocess: {current_process} -> {subprocess_text[:50]}...")
+                logger.info(f"Found subprocess: {process_name} -> {subprocess_text[:50]}...")
                 continue
             
             # Alternative main process pattern: Just ALL CAPS header

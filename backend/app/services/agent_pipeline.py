@@ -125,22 +125,22 @@ Output JSON with this structure:
   "reasoning": "explanation of your analysis"
 }}"""
         else:
-            # FAST MODE - prompt that generates specific, varied failure modes
+            # FAST MODE - prompt that generates one specific failure mode
             prompt = f"""You are analyzing a manufacturing process step for potential failures.
 
 PROCESS: {process_text}
 STEP DETAILS: {subprocess_text or details[:150] if details else "General process step"}
 
-Identify 2 distinct failure modes that could realistically occur in this specific step.
+Identify the single most critical failure mode that could realistically occur in this specific step.
 Consider: equipment failures, operator errors, material defects, process variations, environmental factors.
 
-For each failure mode:
+For the failure mode:
 - Be specific to THIS process (not generic)
 - Describe the actual mechanism of failure
 - Explain the real impact on the product or downstream processes
 
 Output as JSON:
-{{"failure_modes": [{{"failure_mode": "specific failure description", "potential_effect": "actual impact"}}, {{"failure_mode": "different failure", "potential_effect": "its impact"}}]}}"""
+{{"failure_modes": [{{"failure_mode": "specific failure description", "potential_effect": "actual impact"}}]}}"""
         
         return prompt
     
@@ -352,10 +352,10 @@ Are the ratings appropriate? Output JSON:
             logger.warning("No failure modes identified")
             return results
         
-        # In fast mode, limit to 2 failure modes per operation for speed
-        if not self.include_justifications and len(failure_modes) > 2:
-            logger.info(f"FAST MODE: Limiting from {len(failure_modes)} to 2 failure modes")
-            failure_modes = failure_modes[:2]
+        # In fast mode, limit to 1 failure mode per operation for speed
+        if not self.include_justifications and len(failure_modes) > 1:
+            logger.info(f"FAST MODE: Limiting from {len(failure_modes)} to 1 failure mode")
+            failure_modes = failure_modes[:1]
         
         # Process failure modes concurrently with semaphore to limit concurrency
         semaphore = asyncio.Semaphore(self.failure_mode_concurrency)  # Process a few failure modes concurrently

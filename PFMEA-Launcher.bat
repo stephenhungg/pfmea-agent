@@ -245,18 +245,25 @@ if not exist "backend\venv" (
 
 REM Install Python dependencies
 echo      Installing Python packages...
+echo      (This may take 2-5 minutes - progress will be shown below)
+echo.
 pushd "%~dp0backend"
 if not exist venv\Scripts\python.exe call %PYTHON_CMD% -m venv venv
-call venv\Scripts\python.exe -m pip install -q -r requirements.txt >nul 2>&1
+call venv\Scripts\python.exe -m pip install --upgrade pip
+call venv\Scripts\python.exe -m pip install -r requirements.txt
 popd
+echo.
 echo      [OK] Python packages installed
 
 REM Install Node dependencies
 if exist frontend\node_modules goto skip_npm
-echo      Installing frontend packages - this may take a minute...
+echo      Installing frontend packages...
+echo      (This may take 1-3 minutes - progress will be shown below)
+echo.
 pushd "%~dp0frontend"
-call npm install --silent >nul 2>&1
+call npm install
 popd
+echo.
 :skip_npm
 echo      [OK] Frontend packages ready
 
