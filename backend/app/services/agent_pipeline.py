@@ -583,15 +583,18 @@ Are the ratings appropriate? Output JSON:
                 else:
                     occurrence_just = f"Rating {occurrence} assigned based on scale criteria"
                 
-                # Extract process and subprocess correctly
-                process_name = process_step.get("operation") or "Unknown Process"
-                # Ensure process_name is never empty or None
-                if not process_name or not process_name.strip():
-                    logger.warning(f"Empty process name detected in process_step: {process_step}")
-                    process_name = "Unknown Process"
-                subprocess_name = process_step.get("subprocess")
+                # Extract process and subprocess correctly - with defensive checks
+                raw_process = process_step.get("operation")
+                logger.info(f"Raw process from process_step: repr={repr(raw_process)}, type={type(raw_process)}")
 
-                logger.info(f"FINALIZE: process='{process_name}', subprocess='{subprocess_name}'")
+                if raw_process is None or (isinstance(raw_process, str) and not raw_process.strip()):
+                    logger.warning(f"Empty/None process name detected. Full process_step keys: {process_step.keys()}")
+                    process_name = "Unknown Process"
+                else:
+                    process_name = str(raw_process).strip()
+
+                subprocess_name = process_step.get("subprocess")
+                logger.info(f"FINALIZE: process='{process_name}' (len={len(process_name)}), subprocess='{subprocess_name}'")
                 
                 # If no subprocess, use the first step or details as subprocess
                 if not subprocess_name:
@@ -610,7 +613,14 @@ Are the ratings appropriate? Output JSON:
                 control_point = process_step.get("control_point", "")
                 if not control_point and context.get("control_points"):
                     control_point = ", ".join(context.get("control_points", []))
-                
+
+                # CRITICAL: Final validation that process_name is not None or empty
+                if not process_name or process_name.strip() == "":
+                    logger.error(f"CRITICAL: process_name is empty/None right before creating result dict! Setting to 'Unknown Process'")
+                    process_name = "Unknown Process"
+
+                logger.info(f"Creating result dict with process='{process_name}', failure_mode='{failure_mode[:50]}'")
+
                 result = {
                     "process": process_name,
                     "subprocess": subprocess_name or "",
@@ -629,8 +639,15 @@ Are the ratings appropriate? Output JSON:
                     "validation_reasoning": validation_reasoning,
                     "correction_reasoning": correction_reasoning
                 }
-                
-                logger.info(f"FINALIZE: Completed analysis for '{failure_mode[:50]}...' (RPN={rpn}, Risk={risk_level})")
+
+                # Verify result has process field
+                if "process" not in result:
+                    logger.error(f"CRITICAL BUG: 'process' key missing from result dict! Keys: {result.keys()}")
+                elif result["process"] is None:
+                    logger.error(f"CRITICAL BUG: result['process'] is None!")
+                    result["process"] = "Unknown Process"
+
+                logger.info(f"FINALIZE: Completed analysis for '{failure_mode[:50]}...' (RPN={rpn}, Risk={risk_level}, Process={result['process']})")
                 
                 # Stream the result via WebSocket for real-time updates (non-blocking)
                 if progress_callback:

@@ -198,24 +198,36 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
         if all_results:
             # Validate and clean results before saving
             cleaned_results = []
-            for result_data in all_results:
+            for idx, result_data in enumerate(all_results):
+                logger.info(f"Validating result {idx + 1}/{len(all_results)}: keys={result_data.keys()}")
+
+                # Check if process key exists
+                if "process" not in result_data:
+                    logger.error(f"Result {idx + 1} missing 'process' key! Keys: {result_data.keys()}, failure_mode: {result_data.get('failure_mode', 'N/A')}")
+                    result_data["process"] = "Unknown Process"
+
                 # Ensure required fields are not None or empty
                 if not result_data.get("process") or not str(result_data["process"]).strip():
-                    logger.warning(f"Skipping result with empty process: {result_data.get('failure_mode', 'Unknown')}")
+                    logger.warning(f"Result {idx + 1} has empty process (value={repr(result_data.get('process'))}), setting to 'Unknown Process'")
                     result_data["process"] = "Unknown Process"
 
                 # Ensure all required fields exist
                 if not result_data.get("failure_mode"):
-                    logger.warning(f"Skipping result with empty failure_mode")
+                    logger.warning(f"Skipping result {idx + 1} with empty failure_mode")
                     continue
                 if not result_data.get("potential_effect"):
-                    logger.warning(f"Skipping result with empty potential_effect")
+                    logger.warning(f"Skipping result {idx + 1} with empty potential_effect")
                     continue
 
-                cleaned_results.append({"analysis_id": analysis_id, **result_data})
+                # Build the database record
+                db_record = {"analysis_id": analysis_id, **result_data}
+                logger.info(f"Result {idx + 1} DB record has keys: {db_record.keys()}, process={repr(db_record.get('process'))}")
+                cleaned_results.append(db_record)
 
             # Bulk insert for better performance
             if cleaned_results:
+                logger.info(f"About to insert {len(cleaned_results)} records. First record keys: {cleaned_results[0].keys()}")
+                logger.info(f"First record process value: {repr(cleaned_results[0].get('process'))}")
                 db.bulk_insert_mappings(PFMEAResult, cleaned_results)
                 logger.info(f"Saved {len(cleaned_results)} results to database (filtered from {len(all_results)})")
         
