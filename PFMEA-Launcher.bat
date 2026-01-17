@@ -291,7 +291,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5173 ^| findstr LISTENING') 
 REM Start backend
 echo [*] Starting backend server...
 set BACKEND_PATH=%~dp0backend
-start "PFMEA-Backend" cmd /k "cd /d %BACKEND_PATH% && call venv\Scripts\activate.bat && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+start "PFMEA-Backend" cmd /k "cd /d "%BACKEND_PATH%" && venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 timeout /t 3 /nobreak >nul
 
