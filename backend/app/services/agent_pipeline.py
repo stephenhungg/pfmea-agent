@@ -584,8 +584,14 @@ Are the ratings appropriate? Output JSON:
                     occurrence_just = f"Rating {occurrence} assigned based on scale criteria"
                 
                 # Extract process and subprocess correctly
-                process_name = process_step.get("operation", "Unknown")
+                process_name = process_step.get("operation") or "Unknown Process"
+                # Ensure process_name is never empty or None
+                if not process_name or not process_name.strip():
+                    logger.warning(f"Empty process name detected in process_step: {process_step}")
+                    process_name = "Unknown Process"
                 subprocess_name = process_step.get("subprocess")
+
+                logger.info(f"FINALIZE: process='{process_name}', subprocess='{subprocess_name}'")
                 
                 # If no subprocess, use the first step or details as subprocess
                 if not subprocess_name:

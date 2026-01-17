@@ -194,13 +194,30 @@ async def process_analysis(analysis_id: int, include_justifications: bool = True
             "status": "started",
             "message": f"Saving {len(all_results)} PFMEA result(s) to database..."
         })
-        
+
         if all_results:
+            # Validate and clean results before saving
+            cleaned_results = []
+            for result_data in all_results:
+                # Ensure required fields are not None or empty
+                if not result_data.get("process") or not str(result_data["process"]).strip():
+                    logger.warning(f"Skipping result with empty process: {result_data.get('failure_mode', 'Unknown')}")
+                    result_data["process"] = "Unknown Process"
+
+                # Ensure all required fields exist
+                if not result_data.get("failure_mode"):
+                    logger.warning(f"Skipping result with empty failure_mode")
+                    continue
+                if not result_data.get("potential_effect"):
+                    logger.warning(f"Skipping result with empty potential_effect")
+                    continue
+
+                cleaned_results.append({"analysis_id": analysis_id, **result_data})
+
             # Bulk insert for better performance
-            db.bulk_insert_mappings(
-                PFMEAResult,
-                [{"analysis_id": analysis_id, **result_data} for result_data in all_results]
-            )
+            if cleaned_results:
+                db.bulk_insert_mappings(PFMEAResult, cleaned_results)
+                logger.info(f"Saved {len(cleaned_results)} results to database (filtered from {len(all_results)})")
         
         analysis.status = "completed"
         analysis.completed_at = datetime.utcnow()
